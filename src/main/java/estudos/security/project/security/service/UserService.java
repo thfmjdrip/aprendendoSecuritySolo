@@ -29,6 +29,15 @@ public class UserService {
         return repository.existsByUsername(username);
     }
 
+    public void ifUser(String username,String email){
+        try {
+            existsByEmail(email);
+            existsByUsername(username);
+        }catch (BadCredentialsException bad){
+            throw new BadCredentialsException(bad.getMessage()+"not possible to create user");
+        }
+    }
+
     public User findByUserName(String userName) {
         return repository.findByUsername(userName).orElseThrow(() -> new RuntimeException("User not found"));
     }

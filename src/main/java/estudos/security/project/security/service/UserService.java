@@ -1,0 +1,48 @@
+package estudos.security.project.security.service;
+
+import estudos.security.project.security.entities.Dto.LoginRequest;
+import estudos.security.project.security.entities.User;
+import estudos.security.project.security.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository repository;
+
+    public User save(User user){
+        return repository.save(user);
+    }
+
+    public boolean existsByEmail(String email){
+        return  repository.existsByUserEmail(email);
+    }
+
+    public User findByUserEmail(String email) {
+        return repository.findByUserEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    public boolean existsByUsername(String username) {
+        return repository.existsByUsername(username);
+    }
+
+    public User findByUserName(String userName) {
+        return repository.findByUsername(userName).orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    public boolean isLoginCorrect(LoginRequest loginRequest, PasswordEncoder encoder) {
+
+        User user = findByUserEmail(loginRequest.email());
+        var passed = encoder.matches(loginRequest.password(), user.getPassword());
+        if (!passed){
+            throw  new BadCredentialsException("Login ou passord invalida");
+        }
+        return passed;
+    }
+
+
+
+}

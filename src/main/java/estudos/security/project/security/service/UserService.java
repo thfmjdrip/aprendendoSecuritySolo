@@ -8,10 +8,16 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
     private final UserRepository repository;
+
+    public List<User>findAllUsers(){
+        return repository.findAll();
+    }
 
     public User save(User user){
         return repository.save(user);

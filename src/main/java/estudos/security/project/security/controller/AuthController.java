@@ -33,14 +33,14 @@ public class AuthController {
         service.isLoginCorrect(loginRequest,bCryptPasswordEncoder);
         var now = Instant.now();
         var expiresIn = 300L;
-        var scopes = Optional.ofNullable(user.getRoleUser())
+        var scope = Optional.ofNullable(user.getRoleUser())
                 .map(role -> role.getName().toUpperCase())
                 .orElse("");
         var  claims = JwtClaimsSet.builder()
                 .issuer("mydb")
                 .subject(user.getId().toString())
                 .expiresAt(now.plusSeconds(expiresIn))
-                .claim("scopes",scopes)
+                .claim("scope",scope)
                 .issuedAt(now).build();
         var jwtValue = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
         return ResponseEntity.ok(new LoginResponse(jwtValue,expiresIn));

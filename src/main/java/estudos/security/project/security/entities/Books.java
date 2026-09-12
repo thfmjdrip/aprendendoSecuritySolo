@@ -4,6 +4,9 @@ package estudos.security.project.security.entities;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Setter
 @Getter
@@ -20,4 +23,6 @@ public class Books {
     private String name;
     private String descp;
     private String gener;
+    @ManyToMany(mappedBy = "booksList")
+    private List<User> users = new ArrayList<>();
 }

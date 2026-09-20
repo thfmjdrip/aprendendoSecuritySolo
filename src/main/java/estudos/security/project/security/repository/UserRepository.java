@@ -1,6 +1,7 @@
 package estudos.security.project.security.repository;
 
 import estudos.security.project.security.entities.User;
+import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,4 +13,6 @@ public interface UserRepository extends JpaRepository<User,Long> {
     boolean existsByUserEmail(String email);
     Optional<User> findByUsername(String username);
     boolean existsByUsername(String username);
+    boolean existsById(@NonNull Long id);
+
 }

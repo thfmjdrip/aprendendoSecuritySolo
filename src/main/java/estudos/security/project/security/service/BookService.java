@@ -7,6 +7,8 @@ import estudos.security.project.security.repository.BookRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -59,6 +61,11 @@ public class BookService {
         return books;
     }
 
+    public Books findById(Long id){
+        Books book = repository.getReferenceById(id);
+        return book;
+    }
+
     public List<Books>findALlBooks(){
         return repository.findAll();
     }
@@ -67,6 +74,8 @@ public class BookService {
     public boolean existsBookByName(String name){
         return repository.existsByName(name);
     }
+
+    public boolean exitsById(Long id){return repository.existsById(id);}
 
     @Transactional
     public void deleteBook(Long id) {
@@ -81,6 +90,11 @@ public class BookService {
 
         // 3. Deleta o livro com segurança (as linhas em tb_users_books somem)
         repository.delete(book);
+    }
+
+    public Page<Books> obterLivrosPorUsuario(Long userId, Pageable pageable){
+        var books = repository.findByUsersId(userId,pageable);
+        return books;
     }
 
 }

@@ -1,6 +1,7 @@
 package estudos.security.project.security.controller;
 
 import estudos.security.project.security.entities.Dto.CreateUserDto;
+import estudos.security.project.security.entities.Dto.UserResponse;
 import estudos.security.project.security.entities.Role;
 import estudos.security.project.security.entities.User;
 import estudos.security.project.security.service.RoleService;
@@ -44,5 +45,12 @@ public class UserController {
     public ResponseEntity<List<User>> users(){
         var users = userService.findAllUsers();
         return ResponseEntity.ok(users);
+    }
+
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<UserResponse>findUserById(@PathVariable Long userId){
+        var user = UserResponse.fromEntity(userService.findById(userId));
+        return ResponseEntity.ok(user);
     }
 }

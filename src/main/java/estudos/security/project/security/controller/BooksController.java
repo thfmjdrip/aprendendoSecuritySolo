@@ -2,11 +2,15 @@ package estudos.security.project.security.controller;
 
 
 import estudos.security.project.security.entities.Books;
+import estudos.security.project.security.entities.Dto.AssociateBookRequestDTO;
 import estudos.security.project.security.entities.Dto.BookResponse;
 import estudos.security.project.security.entities.Dto.CreateBookRequest;
 import estudos.security.project.security.service.BookService;
 import estudos.security.project.security.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -51,6 +55,19 @@ public class BooksController {
     public ResponseEntity<Void> deleteBookByAdm(@PathVariable Long id){
         bookService.deleteBook(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{userId}/books")
+    public ResponseEntity<Page<BookResponse>> getBooksByUser(@PathVariable Long userId, @PageableDefault(page = 0,size = 5)Pageable pageable){
+        Page<BookResponse> books = bookService.obterLivrosPorUsuario(userId,pageable).map(book -> BookResponse.fromEntity(book));
+        return ResponseEntity.ok(books);
+
+    }
+
+    @PostMapping("/{userId}/add")
+    public ResponseEntity<Void> addBookToUser(@PathVariable Long userId, @RequestBody AssociateBookRequestDTO dto){
+        userService.addBook(userId,dto.id());
+        return ResponseEntity.ok().build();
     }
 
 }

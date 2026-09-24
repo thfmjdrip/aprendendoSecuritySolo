@@ -3,6 +3,7 @@ package estudos.security.project.security.service;
 import estudos.security.project.security.entities.Books;
 import estudos.security.project.security.entities.Dto.BookResponse;
 import estudos.security.project.security.entities.Dto.LoginRequest;
+import estudos.security.project.security.entities.Dto.UserResponse;
 import estudos.security.project.security.entities.User;
 import estudos.security.project.security.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -85,5 +86,29 @@ public class UserService {
             user.getBooksList().add(book);
         }
 
+    }
+
+    @Transactional
+    public void updateUser(UserResponse userResponse, Long id){
+        var user = findById(id);
+        user.setUsername(userResponse.name());
+        user.setUserEmail(userResponse.email());
+        repository.save(user);
+    }
+
+
+    @Transactional
+    public void removeBookFromUser(Long userId, Long bookId) {
+        User user = repository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado: " + userId));
+
+        Books book = service.findById(bookId);
+
+        if (user.getBooksList().contains(book)) {
+            user.getBooksList().remove(book);
+            repository.save(user);
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Livro não encontrado no carrinho do usuário");
+        }
     }
 }

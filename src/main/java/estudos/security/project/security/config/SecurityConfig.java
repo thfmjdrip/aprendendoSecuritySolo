@@ -34,13 +34,12 @@ public class SecurityConfig {
     private RSAPrivateKey privateKey;
 
     @Bean
-//    .requestMatchers(HttpMethod.POST,"/register").permitAll()
-//                        .anyRequest().authenticated() qualquer coisa diferente disso precisa do auth
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity){
         httpSecurity.
                 authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,"/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST,"/api/users/register").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .csrf(csrf -> csrf.disable())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))

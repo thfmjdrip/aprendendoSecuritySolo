@@ -13,5 +13,13 @@ public record BookResponse(Long id, String name, String descp, String gener) {
                 book.getGener()
         );
     }
+    public static Books toEntity(BookResponse bookResponse){
+        return Books.builder()
+                .id(bookResponse.id)
+                .descp(bookResponse.descp)
+                .name(bookResponse.name)
+                .name(bookResponse.name)
+                .build();
+    }
 }
 

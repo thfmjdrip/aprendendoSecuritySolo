@@ -53,4 +53,18 @@ public class UserController {
         var user = UserResponse.fromEntity(userService.findById(userId));
         return ResponseEntity.ok(user);
     }
+
+    @PostMapping("deleteBook/{id}")
+    public ResponseEntity<Void>deleteUserBook(Long bookId, Long userId){
+        userService.removeBookFromUser(bookId,userId);
+        return ResponseEntity.ok().build();
+    }
+
+
+    @PostMapping("/admin/{userId}")
+    @PreAuthorize("hasAuthority('SCOPE_ADMIN')")
+    public ResponseEntity<Void>updateUser(@RequestBody UserResponse userResponse, Long userId ){
+        userService.updateUser(userResponse,userId);
+        return ResponseEntity.ok().build();
+    }
 }

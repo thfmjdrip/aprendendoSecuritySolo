@@ -1,0 +1,296 @@
+# CI/CD Pipeline for Project Security API
+# Triggers: push to main, PR to main, manual dispatch
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to staging after build'
+        type: boolean
+        default: false
+
+# Environment variables
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  JAVA_VERSION: '21'
+  MAVEN_VERSION: '3.9'
+
+# Permissions for GITHUB_TOKEN
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+  security-events: write
+
+jobs:
+  # ============================================================
+  # JOB 1: Unit & Slice Tests (Fast, no external deps)
+  # ============================================================
+  test:
+    name: Unit & Slice Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Setup Maven
+        uses: actions/setup-maven@v4
+        with:
+          maven-version: ${{ env.MAVEN_VERSION }}
+
+      - name: Run unit & slice tests
+        run: ./mvnw -B test --file pom.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          retention-days: 7
+
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: "**/target/surefire-reports/*.xml"
+
+  # ============================================================
+  # JOB 2: Integration Tests (with Testcontainers)
+  # ============================================================
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: security
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d security"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Setup Maven
+        uses: actions/setup-maven@v4
+        with:
+          maven-version: ${{ env.MAVEN_VERSION }}
+
+      - name: Run integration tests
+        run: ./mvnw -B verify -Pintegration-test --file pom.xml
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/security
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: root
+
+      - name: Upload integration test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-reports
+          path: |
+            **/target/failsafe-reports/
+          retention-days: 7
+
+  # ============================================================
+  # JOB 3: Code Quality & Security
+  # ============================================================
+  quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Setup Maven
+        uses: actions/setup-maven@v4
+        with:
+          maven-version: ${{ env.MAVEN_VERSION }}
+
+      # OWASP Dependency Check
+      - name: Run OWASP Dependency Check
+        run: ./mvnw -B org.owasp:dependency-check-maven:check --file pom.xml
+        continue-on-error: true  # Don't fail build on vulnerabilities (warn only)
+
+      - name: Upload dependency check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: target/dependency-check-report.html
+          retention-days: 30
+
+      # SpotBugs (static analysis)
+      - name: Run SpotBugs
+        run: ./mvnw -B com.github.spotbugs:spotbugs-maven-plugin:spotbugs --file pom.xml
+        continue-on-error: true
+
+      # Checkstyle (code style)
+      - name: Run Checkstyle
+        run: ./mvnw -B checkstyle:check --file pom.xml
+        continue-on-error: true
+
+  # ============================================================
+  # JOB 4: Build & Push Docker Image
+  # ============================================================
+  docker:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test, integration-test, quality]
+    if: github.event_name == 'push' || github.event.inputs.deploy == 'true'
+    permissions:
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # ============================================================
+  # JOB 5: Deploy to Staging (Manual Approval)
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          # Add your deployment logic here:
+          # - kubectl apply -f k8s/staging/
+          # - docker compose -f docker-compose.staging.yml up -d
+          # - ssh user@server "docker pull && docker compose up -d"
+          echo "✅ Staging deployment placeholder"
+
+      - name: Smoke test staging
+        run: |
+          echo "🔍 Running smoke tests against staging..."
+          # curl -f https://staging.example.com/actuator/health
+          echo "✅ Smoke tests placeholder"
+
+  # ============================================================
+  # JOB 6: Deploy to Production (Manual Approval Required)
+  # ============================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "🚀 Deploying to production environment..."
+          # Add your production deployment logic here
+          echo "✅ Production deployment placeholder"
+
+      - name: Notify deployment
+        run: |
+          echo "📢 Notifying team of successful deployment..."
+          # Slack/Discord/Teams webhook
+          echo "✅ Notification placeholder"

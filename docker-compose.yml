@@ -1,0 +1,147 @@
+# Docker Compose for Project Security API
+# Usage: docker compose up --build -d
+
+services:
+  # ------------------------------------------------------------
+  # PostgreSQL 16 - Database
+  # ------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: project-security-db
+    environment:
+      POSTGRES_DB: security
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      # Performance tuning for dev
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5444:5432"  # Host:Container (5444 avoids conflict with local PG)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: init scripts
+      # - ./docker/init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d security"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # ------------------------------------------------------------
+  # Project Security API - Spring Boot Application
+  # ------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime  # Multi-stage: use runtime stage
+    container_name: project-security-api
+    environment:
+      # Database
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DB: security
+      POSTGRESQL_USER: postgres
+      POSTGRESQL_PASSWORD: root
+
+      # Spring
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/security
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: root
+
+      # JWT Keys (use classpath in dev, override in prod)
+      JWT_PUBLIC_KEY: classpath:app.pub
+      JWT_PRIVATE_KEY: classpath:app.key
+
+      # Server
+      SERVER_PORT: 8089
+
+      # JVM Tuning for containers
+      JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:+UseStringDeduplication"
+
+    ports:
+      - "8089:8089"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8089/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # ------------------------------------------------------------
+  # Optional: pgAdmin for Database Management
+  # ------------------------------------------------------------
+  # pgadmin:
+  #   image: dpage/pgadmin4:8-alpine
+  #   container_name: project-security-pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@local.dev
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #     PGADMIN_CONFIG_SERVER_MODE: "False"
+  #   ports:
+  #     - "5050:80"
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - app-network
+  #   profiles:
+  #     - tools
+
+  # ------------------------------------------------------------
+  # Optional: Redis for Caching / Rate Limiting / Sessions
+  # ------------------------------------------------------------
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: project-security-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+  #   networks:
+  #     - app-network
+  #   profiles:
+  #     - cache
+
+volumes:
+  postgres_data:
+    driver: local
+  # pgadmin_data:
+  # redis_data:
+
+networks:
+  app-network:
+    driver: bridge
+    name: project-security-network
